@@ -20,16 +20,16 @@ use websocket::{
     ClientBuilder, OwnedMessage, WebSocketError,
 };
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait Transport {
-    async fn send_request<Params: Serialize + Send + Sync, Res: DeserializeOwned>(
+    async fn send_request<Params: Serialize, Res: DeserializeOwned>(
         &self,
         method: &str,
         params: Params,
     ) -> Result<Res, TransportError>;
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait DuplexTransport: Transport {
     fn subscribe<T: DeserializeOwned, S: Stream<Item = T>>(&self) -> Result<S, ()>;
     fn unsubscribe(&self) -> Result<(), ()>;
@@ -77,9 +77,9 @@ impl HTTP {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Transport for HTTP {
-    async fn send_request<Params: Serialize + Send + Sync, Res: DeserializeOwned>(
+    async fn send_request<Params: Serialize, Res: DeserializeOwned>(
         &self,
         method: &str,
         params: Params,
@@ -150,9 +150,9 @@ impl WebSocket {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Transport for WebSocket {
-    async fn send_request<Params: Serialize + Send + Sync, Res: DeserializeOwned>(
+    async fn send_request<Params: Serialize, Res: DeserializeOwned>(
         &self,
         method: &str,
         params: Params,
