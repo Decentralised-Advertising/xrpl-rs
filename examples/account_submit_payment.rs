@@ -26,7 +26,7 @@ async fn main() {
     // Create a new XRPL client with the HTTP transport pointed at ripple testnet.
     let xrpl = XRPL::new(
         HTTP::builder()
-            .with_endpoint("https://s.altnet.rippletest.net:51234/")
+            .with_endpoint("http://127.0.0.1:5005/")
             .unwrap()
             .build()
             .unwrap(),

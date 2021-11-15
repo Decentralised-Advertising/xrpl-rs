@@ -100,13 +100,7 @@ impl Transport for HTTP {
             .await?
             .json::<Response<Res>>()
             .await
-            .map_err(|e| TransportError::ReqwestError(e))
-            .and_then(|r| {
-                if r.status != Some("success".to_owned()) {
-                    return Err(TransportError::ErrorResponse(format!("{:?}", r)));
-                }
-                Ok(r)
-            })?
+            .map_err(|e| TransportError::ReqwestError(e))?
             .result {
                 APIResult::Ok(result) => Ok(result),
                 APIResult::Error(e) => Err(TransportError::APIError(e))
