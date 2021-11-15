@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
-use serde_json::Value;
+use crate::transaction::types::Transaction;
+use serde::{Deserialize, Serialize};
 
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SubmitRequest {
@@ -10,9 +10,9 @@ pub struct SubmitRequest {
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct SignAndSubmitRequest<T: Serialize> {
+pub struct SignAndSubmitRequest {
     /// Transaction definition in JSON format, optionally omitting any auto-fillable fields.
-    pub tx_json: T,
+    pub tx_json: Transaction,
     /// (Optional) Secret key of the account supplying the transaction, used to sign it. Do not send your secret to untrusted servers or through unsecured network connections. Cannot be used with key_type, seed, seed_hex, or passphrase.
     pub secret: Option<String>,
     /// (Optional) Secret key of the account supplying the transaction, used to sign it. Must be in the XRP Ledger's base58 format. If provided, you must also specify the key_type. Cannot be used with secret, seed_hex, or passphrase.
@@ -29,7 +29,7 @@ pub struct SignAndSubmitRequest<T: Serialize> {
     pub build_path: Option<bool>,
     /// (Optional) Sign-and-submit fails with the error rpcHIGH_FEE if the auto-filled Fee value would be greater than the reference transaction cost × fee_mult_max ÷ fee_div_max. This field has no effect if you explicitly specify the Fee field of the transaction. The default is 10.
     pub fee_mult_max: Option<i64>,
-    /// (Optional) Sign-and-submit fails with the error rpcHIGH_FEE if the auto-filled Fee value would be greater than the reference transaction cost × fee_mult_max ÷ fee_div_max. This field has no effect if you explicitly specify the Fee field of the transaction. The default is 1. New in: rippled 0.30.1 
+    /// (Optional) Sign-and-submit fails with the error rpcHIGH_FEE if the auto-filled Fee value would be greater than the reference transaction cost × fee_mult_max ÷ fee_div_max. This field has no effect if you explicitly specify the Fee field of the transaction. The default is 1. New in: rippled 0.30.1
     pub fee_div_max: Option<u64>,
 }
 
@@ -42,5 +42,10 @@ pub enum KeyType {
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct SubmitResponse {}
-
+pub struct SubmitResponse {
+    pub engine_result: String,
+    /// Binary representation of the fully-qualified, signed transaction, as hex
+    pub tx_blob: Option<String>,
+    /// JSON specification of the complete transaction as signed, including any fields that were automatically filled in
+    pub tx_json: Option<Transaction>,
+}

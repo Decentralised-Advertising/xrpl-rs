@@ -1,21 +1,20 @@
+use serde::Serialize;
 use transports::{Transport, TransportError};
 use types::{
     account::{
         AccountChannelsRequest, AccountChannelsResponse, AccountCurrenciesRequest,
         AccountCurrenciesResponse, AccountInfoRequest, AccountInfoResponse, AccountLinesRequest,
-        AccountLinesResponse,
+        AccountLinesResponse, AccountOfferRequest, AccountOfferResponse,
     },
-    submit::{SubmitRequest, SignAndSubmitRequest, SubmitResponse},
-    AccountOfferRequest, AccountOfferResponse,
+    submit::{SignAndSubmitRequest, SubmitRequest, SubmitResponse},
     TransactionEntryRequest, TransactionEntryResponse,
 };
-use serde::Serialize;
 
+pub mod codec;
 pub mod transaction;
 pub mod transports;
 pub mod types;
 pub mod utils;
-pub mod codec;
 
 /// An enum providing error types that can be returned when calling XRPL methods.
 #[derive(Debug)]
@@ -127,6 +126,13 @@ impl<T: Transport> XRPL<T> {
         SubmitRequest,
         SubmitResponse
     );
+    impl_rpc_method!(
+        /// The sign_and_submit method applies a transaction and sends it to the network to be confirmed and included in future ledgers. 
+        sign_and_submit,
+        "submit",
+        SignAndSubmitRequest,
+        SubmitResponse
+    );
 }
 
 #[cfg(test)]
@@ -166,7 +172,7 @@ mod tests {
             }
             Ok(mut res) => {
                 res.ledger_info = types::LedgerInfo::default();
-                let mut account_root = types::account::AccountRoot::default();
+                let mut account_root = types::AccountRoot::default();
                 account_root.account = "rG1QQv2nh2gr7RCZ1P8YYcBUKCCN633jCn".to_owned();
                 account_root.balance = types::CurrencyAmount::XRP("9977".to_owned());
                 assert_eq!(

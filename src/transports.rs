@@ -1,5 +1,6 @@
+use std::fmt::Debug;
 use super::Error;
-use super::types::{Response, RequestId};
+use super::types::{Response,Result as APIResult, Error as APIError, RequestId};
 use async_trait::async_trait;
 use futures::{
     channel::{mpsc, oneshot},
@@ -22,7 +23,7 @@ use websocket::{
 
 #[async_trait(?Send)]
 pub trait Transport {
-    async fn send_request<Params: Serialize, Res: DeserializeOwned>(
+    async fn send_request<Params: Serialize, Res: DeserializeOwned + Debug>(
         &self,
         method: &str,
         params: Params,
@@ -42,6 +43,8 @@ pub enum TransportError {
     InvalidEndpoint(ParseError),
     ReqwestError(reqwest::Error),
     WebSocketError(WebSocketError),
+    ErrorResponse(String),
+    APIError(APIError),
 }
 
 impl From<reqwest::Error> for TransportError {
@@ -79,12 +82,12 @@ impl HTTP {
 
 #[async_trait(?Send)]
 impl Transport for HTTP {
-    async fn send_request<Params: Serialize, Res: DeserializeOwned>(
+    async fn send_request<Params: Serialize, Res: DeserializeOwned + Debug>(
         &self,
         method: &str,
         params: Params,
     ) -> Result<Res, TransportError> {
-        Ok(self
+        match self
             .inner
             .post(self.base_url.clone())
             .header(CONTENT_TYPE, "application/json")
@@ -96,8 +99,18 @@ impl Transport for HTTP {
             .send()
             .await?
             .json::<Response<Res>>()
-            .await?
-            .result)
+            .await
+            .map_err(|e| TransportError::ReqwestError(e))
+            .and_then(|r| {
+                if r.status != Some("success".to_owned()) {
+                    return Err(TransportError::ErrorResponse(format!("{:?}", r)));
+                }
+                Ok(r)
+            })?
+            .result {
+                APIResult::Ok(result) => Ok(result),
+                APIResult::Error(e) => Err(TransportError::APIError(e))
+            }
     }
 }
 
@@ -152,7 +165,7 @@ impl WebSocket {
 
 #[async_trait(?Send)]
 impl Transport for WebSocket {
-    async fn send_request<Params: Serialize, Res: DeserializeOwned>(
+    async fn send_request<Params: Serialize, Res: DeserializeOwned + Debug>(
         &self,
         method: &str,
         params: Params,

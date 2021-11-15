@@ -1,4 +1,4 @@
-use super::{Address, CurrencyAmount, LedgerInfo, PaginationInfo, SignerList};
+use super::{Address, CurrencyAmount, LedgerInfo, PaginationInfo, SignerList, AccountRoot, LedgerEntry};
 use serde::{Deserialize, Serialize};
 
 /// Used to make account_channels requests.
@@ -106,22 +106,6 @@ pub struct AccountInfoResponse {
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct AccountRoot {
-    /// The identifying (classic) address of this account.
-    #[serde(rename = "Account")]
-    pub account: Address,
-    /// The account's current XRP balance in drops, represented as a string.
-    #[serde(rename = "Balance")]
-    pub balance: CurrencyAmount,
-    /// The sequence number of the next valid transaction for this account.
-    #[serde(rename = "Sequence")]
-    pub sequence: u32,
-    /// (Optional) A domain associated with this account. In JSON, this is the hexadecimal for the ASCII representation of the domain. Cannot be more than 256 bytes in length.
-    #[serde(rename = "Domain")]
-    pub domain: Option<String>,
-}
-
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct AccountQueueData {
     /// Number of queued transactions from this address.
     pub txn_count: Option<i64>,
@@ -205,3 +189,79 @@ pub struct AccountTrustLine {
     /// (May be omitted) If true, the peer account has frozen this trust line. The default is false.
     pub freeze_peer: Option<bool>,
 }
+
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AccountOfferRequest {
+    pub account: Address,
+    #[serde(flatten)]
+    pub ledger_info: LedgerInfo,
+    pub limit: Option<i64>,
+    pub strict: Option<bool>,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AccountOfferResponse {
+    pub account: Address,
+    pub offers: Vec<AccountOffer>,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AccountOffer {
+    pub flags: u64,
+    pub seq: u64,
+    pub taker_gets: CurrencyAmount,
+    pub taker_pays: CurrencyAmount,
+    pub quality: String,
+    pub expiration: u64,
+}
+
+/// Used to make account_objects requests.
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AccountObjectsRequest {
+    /// A unique identifier for the account, most commonly the account's address.
+    pub account: Address,
+    /// (Optional) If included, filter results to include only this type of ledger object. The valid types are: check , deposit_preauth, escrow, offer, payment_channel, signer_list, ticket , and state (trust line).
+    pub r#type: Option<AccountObjectType>,
+    /// (Optional) If true, the response only includes objects that would block this account from being deleted. The default is false. New in: rippled 1.4.0
+    pub deletion_blockers_only: Option<bool>,
+    #[serde(flatten)]
+    pub ledger_info: LedgerInfo,
+    #[serde(flatten)]
+    pub pagination: PaginationInfo,
+}
+
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountObjectType {
+    Unknown,
+    Check,
+    DepositPreauth,
+    Escrow,
+    Offer,
+    PaymentChannel,
+    SignerList,
+    Ticket,
+    State,
+}
+
+impl Default for AccountObjectType {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AccountObjectsResponse {
+    /// Unique Address of the account this request corresponds to.
+    pub account: Address,
+    /// Array of objects owned by this account. Each object is in its raw ledger format.
+    pub account_objects: Option<Vec<LedgerEntry>>,
+}
+
+
+/// Used to make account_tx requests.
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AccountTXRequest {}
+
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AccountTXResponse {}

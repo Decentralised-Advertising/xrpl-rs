@@ -6,10 +6,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// An address used to identify an account.
-type Address = String;
+pub type Address = String;
 
 /// A Marker can be used to paginate the server response. It's content is intentionally undefined. Each server can define a marker as desired.
-type Marker = Value;
+pub type Marker = Value;
+
+pub type H256 = String;
 
 /// Unique request id.
 ///
@@ -27,10 +29,10 @@ pub struct LedgerInfo {
     /// (Optional) A 20-byte hex string for the ledger version to use. (See Specifying Ledgers)
     pub ledger_hash: Option<String>,
     /// (Optional) The ledger index of the ledger to use, or a shortcut string to choose a ledger automatically. (See Specifying Ledgers)
-    pub ledger_index: Option<i64>,    
+    pub ledger_index: Option<i64>,
     /// (Omitted if ledger_index is provided instead) The ledger index of the current in-progress ledger, which was used when retrieving this information.
-    pub ledger_current_index: Option<i64>,    
-    /// (May be omitted) If true, the information in this response comes from a validated ledger version. Otherwise, the information is subject to change. New in: rippled 0.90.0 
+    pub ledger_current_index: Option<i64>,
+    /// (May be omitted) If true, the information in this response comes from a validated ledger version. Otherwise, the information is subject to change. New in: rippled 0.90.0
     pub validated: Option<bool>,
 }
 
@@ -39,7 +41,7 @@ pub struct PaginationInfo {
     /// (Optional) Limit the number of transactions to retrieve. Cannot be less than 10 or more than 400. The default is 200.
     pub limit: Option<i64>,
     /// (Optional) Value from a previous paginated response. Resume retrieving data where that response left off. Updated in: rippled 1.5.0.
-    pub marker: Option<Marker>,    
+    pub marker: Option<Marker>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -51,7 +53,7 @@ pub struct Response<T> {
     /// (WebSocket only) The value response indicates a direct response to an API request. Asynchronous notifications use a different value such as ledgerClosed or transaction.
     pub r#type: Option<String>,
     /// The result of the query; contents vary depending on the command.
-    pub result: T,
+    pub result: Result<T>,
     /// (May be omitted) If this field is provided, the value is the string load. This means the client is approaching the rate limiting threshold where the server will disconnect this client.
     pub warning: Option<String>,
     /// (May be omitted) If this field is provided, it contains one or more Warnings Objects with important warnings. For details, see API Warnings. New in: rippled 1.5.0
@@ -61,19 +63,16 @@ pub struct Response<T> {
     pub forwarded: Option<bool>,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct AccountOfferRequest {
-    pub account: Address,
-    #[serde(flatten)]
-    pub ledger_info: LedgerInfo,
-    pub limit: Option<i64>,
-    pub strict: Option<bool>,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum Result<T> {
+    Ok(T),
+    Error(Error)
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct AccountOfferResponse {
-    pub account: Address,
-    pub offers: Vec<AccountOffer>,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Error {
+    pub error: Option<String>,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -92,21 +91,17 @@ pub struct SignerEntry {
     pub signer_weight: u16,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct AccountOffer {
-    pub flags: u64,
-    pub seq: u64,
-    pub taker_gets: CurrencyAmount,
-    pub taker_pays: CurrencyAmount,
-    pub quality: String,
-    pub expiration: u64,
-}
-
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum CurrencyAmount {
     XRP(String),
     IssuedCurrency(IssuedCurrencyAmount),
+}
+
+impl CurrencyAmount {
+    pub fn xrp_from_str(s: &str) -> Self {
+        Self::XRP(s.to_owned())
+    }
 }
 
 impl Default for CurrencyAmount {
@@ -134,4 +129,65 @@ pub struct TransactionEntryResponse {
     pub tx_json: Option<Value>,
     pub ledger_index: Option<u64>,
     pub ledger_hash: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(tag = "LedgerEntryType")]
+pub enum LedgerEntry {
+    Unknown,
+    AccountRoot(AccountRoot),
+    Check(Check),
+}
+
+impl Default for LedgerEntry {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct AccountRoot {
+    /// The identifying (classic) address of this account.
+    pub account: Address,
+    /// The account's current XRP balance in drops, represented as a string.
+    pub balance: CurrencyAmount,
+    /// A bit-map of boolean flags enabled for this account.
+    pub flags: u32,
+    /// The number of objects this account owns in the ledger, which contributes to its owner reserve.
+    pub owner_count: u32,
+    /// The identifying hash of the transaction that most recently modified this object.
+    #[serde(rename = "PreviousTxnID")]
+    pub previous_txn_id: H256,
+    /// The index of the ledger that contains the transaction that most recently modified this object.
+    pub previous_txn_lgr_seq: u32,
+    /// The sequence number of the next valid transaction for this account.
+    pub sequence: u32,
+    /// (Optional) The identifying hash of the transaction most recently sent by this account. This field must be enabled to use the AccountTxnID transaction field. To enable it, send an AccountSet transaction with the asfAccountTxnID flag enabled.
+    pub account_txn_id: Option<H256>,
+    /// (Optional) A domain associated with this account. In JSON, this is the hexadecimal for the ASCII representation of the domain. Cannot be more than 256 bytes in length.
+    pub domain: Option<String>,
+    /// (Optional) The md5 hash of an email address. Clients can use this to look up an avatar through services such as Gravatar .
+    pub email_hash: Option<H256>,
+    /// (Optional) A public key that may be used to send encrypted messages to this account. In JSON, uses hexadecimal. Must be exactly 33 bytes, with the first byte indicating the key type: 0x02 or 0x03 for secp256k1 keys, 0xED for Ed25519 keys.
+    pub message_key: Option<String>,
+    /// (Optional) The address of a key pair that can be used to sign transactions for this account instead of the master key. Use a SetRegularKey transaction to change this value.
+    pub regular_key: Option<String>,
+    /// (Optional) How many Tickets this account owns in the ledger. This is updated automatically to ensure that the account stays within the hard limit of 250 Tickets at a time. This field is omitted if the account has zero Tickets. (Added by the TicketBatch amendment )
+    pub ticket_count: Option<u32>,
+    /// (Optional) How many significant digits to use for exchange rates of Offers involving currencies issued by this address. Valid values are 3 to 15, inclusive. (Added by the TickSize amendment.)
+    pub tick_size: Option<u8>,
+    /// (Optional) A transfer fee to charge other users for sending currency issued by this account to each other.
+    pub transfer_rate: Option<u32>,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Check {
+    /// The sender of the Check. Cashing the Check debits this address's balance.
+    pub account: Address,
+    /// The intended recipient of the Check. Only this address can cash the Check, using a CheckCash transaction.
+    pub destination: Address,
+    /// A bit-map of boolean flags enabled for this account.
+    pub flags: u32,
 }
