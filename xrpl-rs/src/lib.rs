@@ -6,11 +6,12 @@ use types::{
         AccountCurrenciesResponse, AccountInfoRequest, AccountInfoResponse, AccountLinesRequest,
         AccountLinesResponse, AccountOfferRequest, AccountOfferResponse,
     },
+    fee::{FeeRequest, FeeResponse},
     submit::{SignAndSubmitRequest, SubmitRequest, SubmitResponse},
     TransactionEntryRequest, TransactionEntryResponse,
 };
 
-pub mod codec;
+pub mod signing;
 pub mod transaction;
 pub mod transports;
 pub mod types;
@@ -32,6 +33,7 @@ impl From<TransportError> for Error {
 ///
 /// # Examples
 /// ```
+/// use std::convert::TryInto;
 /// use xrpl_rs::{XRPL, transports::HTTP, types::account::AccountInfoRequest, types::CurrencyAmount};
 /// use tokio_test::block_on;
 ///
@@ -55,7 +57,7 @@ impl From<TransportError> for Error {
 ///         .unwrap()
 /// });
 ///
-/// assert_eq!(account_info.account_data.balance, CurrencyAmount::XRP("9977".to_owned()));
+/// assert_eq!(account_info.account_data.balance, CurrencyAmount::XRP("9977".try_into().unwrap()));
 /// ```
 pub struct XRPL<T: Transport> {
     transport: T,
@@ -127,16 +129,27 @@ impl<T: Transport> XRPL<T> {
         SubmitResponse
     );
     impl_rpc_method!(
-        /// The sign_and_submit method applies a transaction and sends it to the network to be confirmed and included in future ledgers. 
+        /// The sign_and_submit method applies a transaction and sends it to the network to be confirmed and included in future ledgers.
         sign_and_submit,
         "submit",
         SignAndSubmitRequest,
         SubmitResponse
     );
+    impl_rpc_method!(
+        /// The fee command reports the current state of the open-ledger requirements for the transaction cost. This requires the FeeEscalation amendment to be enabled. New in: rippled 0.31.0.
+        fee,
+        "fee",
+        FeeRequest,
+        FeeResponse
+    );
 }
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryInto;
+
+    use crate::types::CurrencyAmount;
+
     use super::{transports::HTTPBuilder, types, XRPL};
     #[test]
     fn create_client() {
@@ -170,19 +183,10 @@ mod tests {
             Err(e) => {
                 eprintln!("test failed: {:?}", e);
             }
-            Ok(mut res) => {
-                res.ledger_info = types::LedgerInfo::default();
-                let mut account_root = types::AccountRoot::default();
-                account_root.account = "rG1QQv2nh2gr7RCZ1P8YYcBUKCCN633jCn".to_owned();
-                account_root.balance = types::CurrencyAmount::XRP("9977".to_owned());
+            Ok(res) => {
                 assert_eq!(
-                    res,
-                    types::account::AccountInfoResponse {
-                        account_data: account_root,
-                        queue_data: None,
-                        signer_lists: None,
-                        ledger_info: types::LedgerInfo::default(),
-                    }
+                    res.account_data.balance,
+                    CurrencyAmount::XRP("9977".try_into().unwrap()),
                 );
             }
         }

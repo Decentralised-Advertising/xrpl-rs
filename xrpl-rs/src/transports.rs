@@ -44,7 +44,7 @@ pub enum TransportError {
     ReqwestError(reqwest::Error),
     WebSocketError(WebSocketError),
     ErrorResponse(String),
-    APIError(APIError),
+    APIError(Value),
 }
 
 impl From<reqwest::Error> for TransportError {

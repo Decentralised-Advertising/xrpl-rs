@@ -1,19 +1,5 @@
-[package]
-name = "xrpl-rs"
-version = "0.1.0"
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-tokio = { version = "1", features = ["full"] }
-tokio-test = "0.4.2"
-serde = { version = "1.0.126", features = ["derive"] }
-serde_json = "1.0.64"
-reqwest = { version = "0.11.3", features = ["json"] }
-url = "2.2.2"
-websocket = "0.26.2"
-futures = "0.3.15"
-async-trait = "0.1.50"
-log = "0.4.14"
-lazy_static = "1.4.0"
+[workspace]
+members = [
+    "serde-xrpl",
+    "xrpl-rs",
+]

@@ -6,6 +6,11 @@ async fn main() {
     let creds = testnet::get_testnet_credentials()
         .await
         .expect("error generating testnet credentials");
+    // Print the account and balance
+    println!(
+        "Credentials: {:?}",
+        creds,
+    );
     // Create a new XRPL client with the HTTP transport pointed at ripple testnet.
     let xrpl = XRPL::new(
         HTTP::builder()
@@ -22,7 +27,7 @@ async fn main() {
     let account_info = xrpl.account_info(req).await.unwrap();
     // Print the account and balance
     println!(
-        "Address {} has balance of {:?}",
-        account_info.account_data.account, account_info.account_data.balance
+        "Address {}, Info: {:?}",
+        account_info.account_data.account, account_info
     );
 }
