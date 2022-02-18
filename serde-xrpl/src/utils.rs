@@ -62,10 +62,10 @@ pub fn encode_currency_code(currency_code: &str) -> Vec<u8> {
         ]
         .concat();
     }
-    if currency_code.as_bytes().len() == 20 {
-        return currency_code.as_bytes().to_vec();
+    if currency_code.as_bytes().len() == 40 {
+        return hex::decode(&currency_code).unwrap()
     }
-    panic!("invalid currency code")
+    panic!("invalid currency code with length: {}", currency_code.as_bytes().len())
 }
 
 pub fn encode_issued_currency_amount(

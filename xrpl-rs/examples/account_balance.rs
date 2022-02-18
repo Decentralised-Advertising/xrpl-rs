@@ -1,4 +1,4 @@
-use xrpl_rs::{transports::HTTP, types::account::AccountInfoRequest, utils::testnet, XRPL};
+use xrpl_rs::{transports::HTTP, wallet::Wallet, types::account::AccountInfoRequest, utils::testnet, XRPL};
 
 #[tokio::main]
 async fn main() {
@@ -7,10 +7,7 @@ async fn main() {
         .await
         .expect("error generating testnet credentials");
     // Print the account and balance
-    println!(
-        "Credentials: {:?}",
-        creds,
-    );
+    println!("Credentials: {:?}", creds,);
     // Create a new XRPL client with the HTTP transport pointed at ripple testnet.
     let xrpl = XRPL::new(
         HTTP::builder()
@@ -19,6 +16,10 @@ async fn main() {
             .build()
             .unwrap(),
     );
+    // Create wallet from secret
+    let mut wallet = Wallet::from_secret(&creds.account.secret).unwrap();
+    println!("{}", wallet.address());
+
     // Create an account info request.
     let mut req = AccountInfoRequest::default();
     // Set the account to the testnet credentials.

@@ -4,10 +4,12 @@ use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
 use serde::Serialize;
 use sha2::{Digest, Sha512};
 use xrpl_rs::{
-    signing::{Signer, Wallet},
+    wallet::{Signer, Wallet},
     transaction::types::{Payment, Transaction, TransactionType},
     transports::HTTP,
-    types::{account::AccountInfoRequest, submit::SubmitRequest, CurrencyAmount},
+    types::{
+        account::AccountInfoRequest, submit::SubmitRequest, CurrencyAmount, TransactionEntryRequest,
+    },
     utils::testnet,
     XRPL,
 };
@@ -31,23 +33,25 @@ async fn main() {
 
     // Create wallet from secret
     let mut wallet =
-        Wallet::from_secret(&creds_one.account.secret, &creds_one.account.address).unwrap();
+        Wallet::from_secret(&creds_one.account.secret).unwrap();
 
     // Create a payment transaction.
     let mut payment = Payment::default();
-    payment.amount = CurrencyAmount::XRP("100000000".try_into().unwrap()); // 100 XRP
+    payment.amount = CurrencyAmount::xrp(100000000);
     payment.destination = "rp7pmm4rzTGmtZDuvrG1z9Xrm3KwHRipDw".to_owned(); // Set the destination to the second account.
 
     // Convert the payment into a transaction.
     let mut tx = payment.into_transaction();
 
-    let tx_blob = wallet.sign(&mut tx, &xrpl).await.unwrap();
+    let tx_blob = wallet.fill_and_sign(&mut tx, &xrpl).await.unwrap();
+
+    println!("Transaction: {:?}", tx);
 
     // Create a sign_and_submit request.
     let mut submit_req = SubmitRequest::default();
-    submit_req.tx_blob = hex::encode(&tx_blob).to_uppercase();
+    submit_req.tx_blob = tx_blob;
 
-    // Fetch the account info for an address.
+    // Submit the transaction to the ledger.
     let submit_res = xrpl
         .submit(submit_req)
         .await

@@ -1,13 +1,73 @@
 pub mod account;
 pub mod fee;
+pub mod ledger;
 pub mod submit;
+pub mod channels;
+pub mod tx;
 
 use std::convert::{TryFrom, TryInto};
 use std::num::ParseIntError;
+use std::ops::Add;
+use std::str::FromStr;
 
+use rust_decimal::Decimal;
 use serde;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Default, Clone)]
+pub struct BigInt(pub u64);
+
+impl From<u64> for BigInt {
+    fn from(v: u64) -> Self {
+        Self(v)
+    }
+} 
+
+impl std::ops::Deref for BigInt {
+    type Target = u64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Serialize for BigInt {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!("{}", self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for BigInt {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(BigIntVisitor)
+    }
+}
+
+struct BigIntVisitor;
+
+impl<'de> serde::de::Visitor<'de> for BigIntVisitor {
+    type Value = BigInt;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("an unsigned integer")
+    }
+
+    fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(BigInt(value.parse().map_err(|e| {
+            serde::de::Error::custom(format!("{:?}", e))
+        })?))
+    }
+}
 
 /// An address used to identify an account.
 pub type Address = String;
@@ -33,11 +93,22 @@ pub struct LedgerInfo {
     /// (Optional) A 20-byte hex string for the ledger version to use. (See Specifying Ledgers)
     pub ledger_hash: Option<String>,
     /// (Optional) The ledger index of the ledger to use, or a shortcut string to choose a ledger automatically. (See Specifying Ledgers)
-    pub ledger_index: Option<i64>,
+    #[serde(default, deserialize_with = "from_str")]
+    pub ledger_index: Option<u32>,
     /// (Omitted if ledger_index is provided instead) The ledger index of the current in-progress ledger, which was used when retrieving this information.
     pub ledger_current_index: Option<i64>,
     /// (May be omitted) If true, the information in this response comes from a validated ledger version. Otherwise, the information is subject to change. New in: rippled 0.90.0
     pub validated: Option<bool>,
+}
+
+fn from_str<'de, T, D>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
+where
+    T: FromStr,
+    T::Err: std::fmt::Display,
+    D: serde::de::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(Some(T::from_str(&s).map_err(serde::de::Error::custom)?))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -95,78 +166,35 @@ pub struct SignerEntry {
     pub signer_weight: u16,
 }
 
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Default, Clone)]
-pub struct Drops(u64);
-
-impl Serialize for Drops {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&format!("{}", self.0))
-    }
-}
-
-impl<'de> Deserialize<'de> for Drops {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Drops, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        deserializer.deserialize_str(DropsVisitor)
-    }
-}
-
-struct DropsVisitor;
-
-impl<'de> serde::de::Visitor<'de> for DropsVisitor {
-    type Value = Drops;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("an unsigned integer")
-    }
-
-    fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        Ok(value
-            .try_into()
-            .map_err(|e| serde::de::Error::custom(format!("{:?}", e)))?)
-    }
-}
-
-impl TryFrom<String> for Drops {
-    type Error = ParseIntError;
-
-    fn try_from(value: String) -> std::result::Result<Self, Self::Error> {
-        Ok(Self(value.parse()?))
-    }
-}
-
-impl TryFrom<&str> for Drops {
-    type Error = ParseIntError;
-
-    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
-        Ok(Self(value.parse()?))
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum CurrencyAmount {
-    XRP(Drops),
+    XRP(BigInt),
     IssuedCurrency(IssuedCurrencyAmount),
+}
+
+impl CurrencyAmount {
+    pub fn xrp(drops: u64) -> Self {
+        Self::XRP(BigInt(drops))
+    }
+    pub fn issued_currency(value: Decimal, currency: &str, issuer: &Address) -> Self {
+        Self::IssuedCurrency(IssuedCurrencyAmount {
+            value,
+            currency: currency.to_owned(),
+            issuer: issuer.to_owned(),
+        })
+    }
 }
 
 impl Default for CurrencyAmount {
     fn default() -> Self {
-        return Self::XRP(Drops(0u64));
+        Self::XRP(BigInt::default())
     }
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct IssuedCurrencyAmount {
-    pub value: String,
+    pub value: Decimal,
     pub currency: String,
     pub issuer: Address,
 }

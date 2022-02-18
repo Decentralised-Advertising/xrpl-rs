@@ -8,10 +8,11 @@ use types::{
     },
     fee::{FeeRequest, FeeResponse},
     submit::{SignAndSubmitRequest, SubmitRequest, SubmitResponse},
-    TransactionEntryRequest, TransactionEntryResponse,
+    ledger::{LedgerRequest, LedgerResponse},
+    TransactionEntryRequest, TransactionEntryResponse, channels::{ChannelVerifyRequest, ChannelVerifyResponse}, tx::{TxRequest, TxResponse},
 };
 
-pub mod signing;
+pub mod wallet;
 pub mod transaction;
 pub mod transports;
 pub mod types;
@@ -142,13 +143,34 @@ impl<T: Transport> XRPL<T> {
         FeeRequest,
         FeeResponse
     );
+    impl_rpc_method!(
+        /// Retrieve information about the public ledger.
+        ledger,
+        "ledger",
+        LedgerRequest,
+        LedgerResponse
+    );
+    impl_rpc_method!(
+        /// The channel_verify method checks the validity of a signature that can be used to redeem a specific amount of XRP from a payment channel.
+        channel_verify,
+        "channel_verify",
+        ChannelVerifyRequest,
+        ChannelVerifyResponse
+    );
+    impl_rpc_method!(
+        /// The tx method retrieves information on a single transaction, by its identifying hash.
+        tx,
+        "tx",
+        TxRequest,
+        TxResponse
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use std::convert::TryInto;
 
-    use crate::types::CurrencyAmount;
+    use crate::types::{CurrencyAmount, BigInt};
 
     use super::{transports::HTTPBuilder, types, XRPL};
     #[test]
@@ -186,7 +208,7 @@ mod tests {
             Ok(res) => {
                 assert_eq!(
                     res.account_data.balance,
-                    CurrencyAmount::XRP("9977".try_into().unwrap()),
+                    CurrencyAmount::XRP(BigInt(9977)),
                 );
             }
         }

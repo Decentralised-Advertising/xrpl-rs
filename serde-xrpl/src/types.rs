@@ -80,7 +80,7 @@ impl Value {
                 Ok([length, data].concat())
             }
             Self::Transaction(tx) => Ok(tx.to_be_bytes().to_vec()),
-            Self::Hash256(hash) => Ok(hex::decode(&hash.0).unwrap().to_vec()),
+            Self::Hash256(hash) => Ok(hash.to_bytes().to_vec()),
             Self::Vector256(v) => {
                 let data: Vec<u8> =
                     v.0.iter()
@@ -98,13 +98,19 @@ impl Value {
 }
 
 #[derive(Debug, Clone)]
-pub struct Hash160(pub(crate) String);
+pub struct Hash160(pub String);
 
 #[derive(Debug, Clone)]
-pub struct Hash128(pub(crate) String);
+pub struct Hash128(pub String);
 
 #[derive(Debug, Clone)]
-pub struct Hash256(pub(crate) String);
+pub struct Hash256(pub String);
+
+impl Hash256 {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        hex::decode(&self.0).unwrap().to_vec()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct AccountID([u8; 20]);
@@ -147,10 +153,10 @@ impl Amount {
 pub struct STObject(HashMap<String, Value>);
 
 #[derive(Debug, Clone)]
-pub struct Blob(pub(crate) String);
+pub struct Blob(pub String);
 
 #[derive(Debug, Clone)]
 pub struct STArray(Vec<Value>);
 
 #[derive(Debug, Clone)]
-pub struct Vector256(pub(crate) Vec<Hash256>);
+pub struct Vector256(pub Vec<Hash256>);
