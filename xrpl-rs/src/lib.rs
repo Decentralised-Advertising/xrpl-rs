@@ -58,7 +58,7 @@ impl From<TransportError> for Error {
 ///         .unwrap()
 /// });
 ///
-/// assert_eq!(account_info.account_data.balance, CurrencyAmount::XRP("9977".try_into().unwrap()));
+/// assert_eq!(account_info.account_data.balance, CurrencyAmount::xrp(9977));
 /// ```
 pub struct XRPL<T: Transport> {
     transport: T,

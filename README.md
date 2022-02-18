@@ -41,4 +41,4 @@ A client implementation in Rust for interacting with the [XRPL](https://xrpl.org
             .await
             .unwrap()
     });
-    assert_eq!(account_info.account_data.balance, CurrencyAmount::XRP("9977".try_into().unwrap()));
+    assert_eq!(account_info.account_data.balance, CurrencyAmount::xrp(9977));

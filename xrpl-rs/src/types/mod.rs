@@ -93,7 +93,6 @@ pub struct LedgerInfo {
     /// (Optional) A 20-byte hex string for the ledger version to use. (See Specifying Ledgers)
     pub ledger_hash: Option<String>,
     /// (Optional) The ledger index of the ledger to use, or a shortcut string to choose a ledger automatically. (See Specifying Ledgers)
-    #[serde(default, deserialize_with = "from_str")]
     pub ledger_index: Option<u32>,
     /// (Omitted if ledger_index is provided instead) The ledger index of the current in-progress ledger, which was used when retrieving this information.
     pub ledger_current_index: Option<i64>,
