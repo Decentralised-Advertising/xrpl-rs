@@ -1,4 +1,35 @@
-use serde::Serialize;
+//! A client that exposes methods for interacting with the XRP Ledger.
+//!
+//! # Example Usage
+//! ```
+//! use std::convert::TryInto;
+//! use xrpl_rs::{XRPL, transports::HTTP, types::account::AccountInfoRequest, types::CurrencyAmount};
+//! use tokio_test::block_on;
+//!
+//! // Create a new XRPL client with the HTTP transport.
+//! let xrpl = XRPL::new(
+//!     HTTP::builder()
+//!         .with_endpoint("http://s1.ripple.com:51234/")
+//!         .unwrap()
+//!         .build()
+//!         .unwrap());
+//!
+//! // Create a request
+//! let mut req = AccountInfoRequest::default();
+//! req.account = "rG1QQv2nh2gr7RCZ1P8YYcBUKCCN633jCn".to_owned();
+//!
+//! // Fetch the account info for an address.
+//! let account_info = block_on(async {
+//!     xrpl
+//!         .account_info(req)
+//!         .await
+//!         .unwrap()
+//! });
+//!
+//! assert_eq!(account_info.account_data.balance, CurrencyAmount::xrp(9977));
+//! ```
+
+
 use transports::{Transport, TransportError};
 use types::{
     account::{
@@ -6,17 +37,19 @@ use types::{
         AccountCurrenciesResponse, AccountInfoRequest, AccountInfoResponse, AccountLinesRequest,
         AccountLinesResponse, AccountOfferRequest, AccountOfferResponse,
     },
+    channels::{ChannelVerifyRequest, ChannelVerifyResponse},
     fee::{FeeRequest, FeeResponse},
-    submit::{SignAndSubmitRequest, SubmitRequest, SubmitResponse},
     ledger::{LedgerRequest, LedgerResponse},
-    TransactionEntryRequest, TransactionEntryResponse, channels::{ChannelVerifyRequest, ChannelVerifyResponse}, tx::{TxRequest, TxResponse},
+    submit::{SignAndSubmitRequest, SubmitRequest, SubmitResponse},
+    tx::{TxRequest, TxResponse},
+    TransactionEntryRequest, TransactionEntryResponse,
 };
 
-pub mod wallet;
 pub mod transaction;
 pub mod transports;
 pub mod types;
 pub mod utils;
+pub mod wallet;
 
 /// An enum providing error types that can be returned when calling XRPL methods.
 #[derive(Debug)]
@@ -170,7 +203,7 @@ impl<T: Transport> XRPL<T> {
 mod tests {
     use std::convert::TryInto;
 
-    use crate::types::{CurrencyAmount, BigInt};
+    use crate::types::{BigInt, CurrencyAmount};
 
     use super::{transports::HTTPBuilder, types, XRPL};
     #[test]
@@ -206,10 +239,7 @@ mod tests {
                 eprintln!("test failed: {:?}", e);
             }
             Ok(res) => {
-                assert_eq!(
-                    res.account_data.balance,
-                    CurrencyAmount::XRP(BigInt(9977)),
-                );
+                assert_eq!(res.account_data.balance, CurrencyAmount::XRP(BigInt(9977)),);
             }
         }
     }
