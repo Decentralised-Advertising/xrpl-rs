@@ -49,6 +49,10 @@ pub const TF_TRANSFERABLE: TFFlag = 0x00000008;
 pub enum TransactionType {
     Payment(Payment),
     AccountSet(AccountSet),
+    AccountDelete(AccountDelete),
+    CheckCancel(CheckCancel),
+    CheckCash(CheckCash),
+    CheckCreate(CheckCreate),
     TrustSet(TrustSet),
     PaymentChannelClaim(PaymentChannelClaim),
     PaymentChannelCreate(PaymentChannelCreate),
@@ -102,6 +106,57 @@ pub const ASF_REQUIRE_AUTH: AccountSetFlag = 2;
 pub const ASF_REQUIRE_DEST: AccountSetFlag = 1;
 
 into_transaction!(AccountSet);
+
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct AccountDelete {
+    /// The address of an account to receive any leftover XRP after deleting the sending account. Must be a funded account in the ledger, and must not be the sending account.
+    pub destination: Address,
+    /// (Optional) Arbitrary destination tag that identifies a hosted recipient or other information for the recipient of the deleted account's leftover XRP.
+    pub destination_tag: Option<u32>,
+}
+
+into_transaction!(AccountDelete);
+
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct CheckCancel {
+    /// The ID of the Check ledger object to cancel, as a 64-character hexadecimal string.
+    pub check_id: H256,
+}
+
+into_transaction!(CheckCancel);
+
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct CheckCash {
+    /// The ID of the Check ledger object to cash, as a 64-character hexadecimal string.
+    pub check_id: H256,
+    /// (Optional) Redeem the Check for exactly this amount, if possible. The currency must match that of the SendMax of the corresponding CheckCreate transaction. You must provide either this field or DeliverMin.
+    pub amount: Option<CurrencyAmount>,
+    /// (Optional) Redeem the Check for at least this amount and for as much as possible. The currency must match that of the SendMax of the corresponding CheckCreate transaction. You must provide either this field or Amount.
+    pub deliver_min: Option<CurrencyAmount>,
+}
+
+into_transaction!(CheckCash);
+
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct CheckCreate {
+    /// The unique address of the account that can cash the Check.
+    pub destination: Address,
+    /// Maximum amount of source currency the Check is allowed to debit the sender, including transfer fees on non-XRP currencies. The Check can only credit the destination with the same currency (from the same issuer, for non-XRP currencies). For non-XRP amounts, the nested field names MUST be lower-case.
+    pub send_max: CurrencyAmount,
+    /// (Optional) Arbitrary tag that identifies the reason for the Check, or a hosted recipient to pay.
+    pub destination_tag: Option<u32>,
+    /// (Optional) Time after which the Check is no longer valid, in seconds since the Ripple Epoch.
+    pub expiration: Option<u32>,
+    /// (Optional) Arbitrary 256-bit hash representing a specific reason or identifier for this Check.
+    #[serde(rename = "InvoiceID")]
+    pub invoice_id: Option<H256>,
+}
+
+into_transaction!(CheckCreate);
 
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
@@ -182,12 +237,3 @@ pub struct NFTokenMint {
 }
 
 into_transaction!(NFTokenMint);
-
-// #[test]
-// pub fn test_serialize() {
-//     let j = serde_json::json!(Payment{
-//         amount: CurrencyAmount::XRP("14000".to_owned()),
-//         destination: "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B".to_owned(),
-//     });
-//     assert_eq!(hex::encode(serde_xrpl::ser::to_bytes(&j).unwrap()), "");
-// }

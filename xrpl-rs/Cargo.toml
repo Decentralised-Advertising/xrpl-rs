@@ -1,6 +1,6 @@
 [package]
 name = "xrpl-rs"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2018"
 description = "An XRPL client implementation"
 license = "MIT"
@@ -24,7 +24,7 @@ hex-literal = "0.3.4"
 bs58 = { version = "0.4.0", features = ["check"] }
 hex = "0.4.3"
 rust_decimal = "1.19.0"
-serde-xrpl = { path = "../serde-xrpl" }
+serde-xrpl = "0.1.1"
 secp256k1 = { version = "0.21.0", features = [ "bitcoin_hashes", "rand" ] }
 sha256 = "1.0.3"
 sha2 = "0.10.0"
