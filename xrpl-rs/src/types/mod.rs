@@ -4,6 +4,7 @@ pub mod ledger;
 pub mod submit;
 pub mod channels;
 pub mod tx;
+pub mod subscribe;
 
 use std::convert::{TryFrom, TryInto};
 use std::num::ParseIntError;
@@ -80,13 +81,7 @@ pub type H256 = String;
 /// Unique request id.
 ///
 /// NOTE Assigning same id to different requests will cause the previous request to be unsubscribed.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum RequestId {
-    /// A numerical ID, represented by a `u64`.
-    Number(u64),
-    /// A non-numerical ID, for example a hash.
-    String(String),
-}
+pub type RequestId = u64;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct LedgerInfo {

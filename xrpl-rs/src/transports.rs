@@ -1,25 +1,28 @@
-use std::fmt::Debug;
+use super::types::{
+    subscribe::{SubscribeRequest, SubscriptionEvent}, Error as APIError, RequestId, Response, Result as APIResult,
+};
 use super::Error;
-use super::types::{Response,Result as APIResult, Error as APIError, RequestId};
 use async_trait::async_trait;
 use futures::{
-    channel::{mpsc, oneshot},
+    channel::{mpsc, mpsc::UnboundedReceiver, oneshot},
+    stream::Map,
     task::Context,
+    SinkExt, Stream, StreamExt,
 };
 use reqwest::{header::CONTENT_TYPE, Client};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::collections::VecDeque;
+use std::convert::TryInto;
+use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use url::{ParseError, Url};
-use websocket::{
-    futures::{sink::Sink, Async, AsyncSink, Future, Stream},
-    r#async::Client as WSClient,
-    ClientBuilder, OwnedMessage, WebSocketError,
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{Error as WSError, Message, Result},
 };
+use url::{ParseError, Url};
 
 #[async_trait(?Send)]
 pub trait Transport {
@@ -32,8 +35,11 @@ pub trait Transport {
 
 #[async_trait(?Send)]
 pub trait DuplexTransport: Transport {
-    fn subscribe<T: DeserializeOwned, S: Stream<Item = T>>(&self) -> Result<S, ()>;
-    fn unsubscribe(&self) -> Result<(), ()>;
+    async fn subscribe<T: DeserializeOwned>(
+        &self,
+        request: SubscribeRequest,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<T, TransportError>>>>, TransportError>;
+    async fn unsubscribe(&self, request: SubscribeRequest) -> Result<(), TransportError>;
 }
 
 #[derive(Debug)]
@@ -42,7 +48,7 @@ pub enum TransportError {
     Error(&'static str),
     InvalidEndpoint(ParseError),
     ReqwestError(reqwest::Error),
-    WebSocketError(WebSocketError),
+    WSError(WSError),
     ErrorResponse(String),
     APIError(Value),
 }
@@ -53,9 +59,9 @@ impl From<reqwest::Error> for TransportError {
     }
 }
 
-impl From<WebSocketError> for TransportError {
-    fn from(e: WebSocketError) -> Self {
-        Self::WebSocketError(e)
+impl From<WSError> for TransportError {
+    fn from(e: WSError) -> Self {
+        Self::WSError(e)
     }
 }
 
@@ -63,6 +69,14 @@ impl From<WebSocketError> for TransportError {
 pub struct JsonRPCRequest<T: Serialize> {
     pub id: RequestId,
     pub method: String,
+    pub params: T,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WebSocketRPCRequest<T: Serialize> {
+    pub id: RequestId,
+    pub command: String,
+    #[serde(flatten)]
     pub params: T,
 }
 
@@ -92,7 +106,7 @@ impl Transport for HTTP {
             .post(self.base_url.clone())
             .header(CONTENT_TYPE, "application/json")
             .json(&JsonRPCRequest {
-                id: RequestId::Number(self.counter.fetch_add(1u64, Ordering::SeqCst)),
+                id: self.counter.fetch_add(1u64, Ordering::SeqCst),
                 method: method.to_owned(),
                 params: vec![params],
             })
@@ -101,10 +115,11 @@ impl Transport for HTTP {
             .json::<Response<Res>>()
             .await
             .map_err(|e| TransportError::ReqwestError(e))?
-            .result {
-                APIResult::Ok(result) => Ok(result),
-                APIResult::Error(e) => Err(TransportError::APIError(e))
-            }
+            .result
+        {
+            APIResult::Ok(result) => Ok(result),
+            APIResult::Error(e) => Err(TransportError::APIError(e)),
+        }
     }
 }
 
@@ -133,12 +148,12 @@ impl HTTPBuilder {
 pub enum PendingRequest {
     Call {
         id: RequestId,
-        request: JsonRPCRequest<Value>,
-        response: Arc<oneshot::Sender<Response<Value>>>,
+        request: WebSocketRPCRequest<Value>,
+        response: mpsc::Sender<Response<Value>>,
     },
     Subscription {
         id: RequestId,
-        request: JsonRPCRequest<Value>,
+        request: WebSocketRPCRequest<Value>,
         channel: mpsc::UnboundedSender<Response<Value>>,
     },
 }
@@ -146,6 +161,7 @@ pub enum PendingRequest {
 pub struct WebSocket {
     counter: Arc<AtomicU64>,
     sender: mpsc::UnboundedSender<PendingRequest>,
+    pending_requests: Arc<Mutex<HashMap<u64, PendingRequest>>>,
 }
 
 impl WebSocket {
@@ -153,7 +169,11 @@ impl WebSocket {
         Self {
             counter: Arc::new(AtomicU64::new(1u64)),
             sender,
+            pending_requests: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+    pub fn builder() -> WebSocketBuilder {
+        WebSocketBuilder::default()
     }
 }
 
@@ -164,17 +184,72 @@ impl Transport for WebSocket {
         method: &str,
         params: Params,
     ) -> Result<Res, TransportError> {
-        Err(TransportError::NoEndpoint)
+        let mut sender = self.sender.clone();
+        let id = self.counter.fetch_add(1u64, Ordering::Relaxed);
+        let (s, r) = mpsc::channel(1);
+        let request = PendingRequest::Call {
+            id,
+            request: WebSocketRPCRequest {
+                id,
+                command: method.to_owned(),
+                params: json!(params),
+            },
+            response: s.clone(),
+        };
+        if let Ok(mut pending_requests) = self.pending_requests.lock() {
+            pending_requests.insert(id, request.clone());
+        }
+        sender
+            .send(request)
+            .await
+            .map_err(|e| TransportError::ErrorResponse(format!("sending: {:?}", e)))?; //TODO: Add error type for websocket send error
+        let response: Response<Value> = r
+            .take(1)
+            .collect::<Vec<Response<Value>>>()
+            .await
+            .first()
+            .unwrap()
+            .clone();
+        match response.result {
+            APIResult::Ok(result) => Ok(serde_json::from_value(result).unwrap()),
+            APIResult::Error(e) => Err(TransportError::APIError(e)),
+        }
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl DuplexTransport for WebSocket {
-    fn subscribe<T: DeserializeOwned, St: Stream<Item = T>>(&self) -> Result<St, ()> {
-        Err(())
+    async fn subscribe<T: DeserializeOwned>(
+        &self,
+        request: SubscribeRequest,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<T, TransportError>>>>, TransportError> {
+        let mut sender = self.sender.clone();
+        let id = self.counter.fetch_add(1u64, Ordering::Relaxed);
+        let (s, r) = mpsc::unbounded();
+        let req = PendingRequest::Subscription {
+            id,
+            request: WebSocketRPCRequest {
+                id,
+                command: "subscribe".to_owned(),
+                params: json!(request),
+            },
+            channel: s.clone(),
+        };
+        if let Ok(mut pending_requests) = self.pending_requests.lock() {
+            pending_requests.insert(id, req.clone());
+        }
+        sender
+            .send(req)
+            .await
+            .map_err(|e| TransportError::ErrorResponse(format!("sending: {:?}", e)))?; //TODO: Add error type for websocket send error
+        let stream = r.map(|response| match response.result {
+            APIResult::Ok(result) => Ok(serde_json::from_value(result).unwrap()),
+            APIResult::Error(e) => Err(TransportError::APIError(e)),
+        });
+        Ok(Box::pin(stream))
     }
-    fn unsubscribe(&self) -> Result<(), ()> {
-        Err(())
+    async fn unsubscribe(&self, _request: SubscribeRequest) -> Result<(), TransportError> {
+        Err(TransportError::Error("test"))
     }
 }
 
@@ -191,182 +266,54 @@ impl WebSocketBuilder {
     }
 
     pub async fn build(&self) -> Result<WebSocket, TransportError> {
-        ClientBuilder::new(self.endpoint.clone().unwrap().as_str())
-            .unwrap()
-            .async_connect(None)
-            .map(|(client, _)| {
-                let (mut sink, mut stream) = client.split();
-                let (sender, mut receiver) = mpsc::unbounded::<PendingRequest>();
-                let mut pending_requests: HashMap<RequestId, PendingRequest> = HashMap::new();
-                let ws = WebSocket::new(sender);
-                // Replace with tokio::spawn and future instead of dumb infinite loop...
-                std::thread::spawn(move || {
-                    loop {
-                        // Handle outgoing requests.
-                        loop {
-                            // 1. Receive from reciever channel
-                            // 2. Create and store pending request (call or sub).
-                            // 3. Write to sink.
-                            if let Some(pending_request) = receiver.try_next().ok().flatten() {
-                                // Get the id from the pending request.
-                                let id = match pending_request {
-                                    PendingRequest::Call { ref id, .. } => id.clone(),
-                                    PendingRequest::Subscription { ref id, .. } => id.clone(),
-                                };
-                                if pending_requests.contains_key(&id) {
-                                    log::warn!("request already exists with id: {:?}", &id);
-                                    break;
-                                }
-                                // Get the rpc request from the pending request.
-                                let request = match pending_request {
-                                    PendingRequest::Call { ref request, .. } => request.clone(),
-                                    PendingRequest::Subscription { ref request, .. } => request.clone(),
-                                };
-                                if let Ok(req_json) = serde_json::to_string(&request) {
-                                    // Add to pending requests.
-                                    pending_requests.insert(id, pending_request);
-                                    // Poll sink send to until the send has completed.
-                                    loop {
-                                        match sink.start_send(OwnedMessage::Text(req_json.clone())) {
-                                            Ok(AsyncSink::Ready) => {
-                                                break;
-                                            }
-                                            Ok(AsyncSink::NotReady(_)) => {
-                                                continue;
-                                            }
-                                            Err(e) => {
-                                                log::warn!("error sending request: {:?}", e);
-                                            }
-                                        }
-                                    }
-                                }
+        let (ws_stream, _) = connect_async(self.endpoint.clone().unwrap()).await?;
+        let (sender, mut receiver) = mpsc::unbounded::<PendingRequest>();
+        let (write, read) = ws_stream.split();
+        let ws = WebSocket::new(sender);
+        let pending_requests = ws.pending_requests.clone();
+        tokio::spawn(async move {
+            read.for_each(|message| async {
+                let data = message.unwrap().into_data();
+                let s = String::from_utf8_lossy(&data);
+                let res: Option<Response<Value>> = serde_json::from_slice(&data).ok();
+                match res {
+                    Some(res) => {
+                        let pr = pending_requests
+                            .lock()
+                            .map(|p| p.get(&res.id.unwrap()).unwrap().clone())
+                            .unwrap();
+                        match pr {
+                            PendingRequest::Call { response, .. } => {
+                                let mut r = response.clone();
+                                r.send(res).await.unwrap();
                             }
-                            break;
-                        }
-        
-                        // Handle incoming requests.
-                        loop {
-                            // 1. Receive from stream
-                            // 2. Lookup id in pending requests.
-                            // 3. Send received value to pending request channel (call or sub).WebSocket
-                            // 4. Remove pending request (call only)
-                            match stream.poll() {
-                                Ok(Async::Ready(rec)) => {
-                                    if let Some(OwnedMessage::Text(txt)) = rec {
-                                        match serde_json::from_str::<Response<Value>>(&txt) {
-                                            Ok(res) => {
-                                                log::debug!("received message: {:?}", res);
-                                                if let Some(pending_request) =
-                                                    pending_requests.remove(&res.id.as_ref().unwrap())
-                                                {
-                                                    match pending_request {
-                                                        PendingRequest::Call { response, .. } => {
-                                                            let sender = Arc::try_unwrap(response).unwrap();
-                                                            sender.send(res.clone()).unwrap();
-                                                        }
-                                                        PendingRequest::Subscription {
-                                                            mut channel,
-                                                            ..
-                                                        } => {
-                                                            // Poll channel send to until the send has succeeded.
-                                                            loop {
-                                                                match channel.start_send(res.clone()) {
-                                                                    Ok(()) => {
-                                                                        break;
-                                                                    }
-                                                                    Err(e) => {
-                                                                        log::warn!(
-                                                                            "error sending response: {:?}",
-                                                                            e
-                                                                        );
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                log::error!("received invalid message: {:?}", e);
-                                            }
-                                        }
-                                    }
-                                }
-                                Ok(Async::NotReady) => {
-                                    break;
-                                }
-                                Err(e) => {
-                                    log::warn!("error receiving response: {:?}", e);
-                                }
-                            }
-                            break;
+                            _ => {}
                         }
                     }
-                });
-                ws
+                    None => {
+                        if let Ok(event) = serde_json::from_slice::<SubscriptionEvent>(&data) {
+                            println!("{:?}", event);
+                        };
+                    }
+                }
             })
-            .wait()
-            .map_err(|e| TransportError::WebSocketError(e))
+            .await;
+        });
+        tokio::spawn(async move {
+            receiver
+                .map(|req| match req {
+                    PendingRequest::Call { request, .. } => {
+                        Message::Text(serde_json::to_string(&request).unwrap())
+                    }
+                    PendingRequest::Subscription { request, .. } => {
+                        Message::Text(serde_json::to_string(&request).unwrap())
+                    }
+                })
+                .map(Ok)
+                .forward(write)
+                .await
+                .unwrap();
+        });
+        Ok(ws)
     }
 }
-
-// impl<TSink, TStream, TError> Sink<TItem> for WebSocket<TSink, TStream>
-// where
-// 	TSink: Sink<OwnedMessage, Error = TError>,
-// 	TStream: Stream<Item = OwnedMessage>,
-// 	TError: Into<TransportError>,
-// {
-// 	type SinkItem = String;
-// 	type SinkError = TransportError;
-
-// 	fn start_send(&mut self, request: Self::SinkItem) -> Result<AsyncSink<Self::SinkItem>, Self::SinkError> {
-// 		self.queue.push_back(OwnedMessage::Text(request));
-// 		Ok(AsyncSink::Ready)
-// 	}
-
-// 	fn poll_complete(&mut self) -> Result<Async<()>, Self::SinkError> {
-// 		loop {
-// 			match self.queue.pop_front() {
-// 				Some(request) => match self.sink.start_send(request) {
-// 					Ok(AsyncSink::Ready) => continue,
-// 					Ok(AsyncSink::NotReady(request)) => {
-// 						self.queue.push_front(request);
-// 						break;
-// 					}
-// 					Err(error) => return Err(RpcError::Other(error.into())),
-// 				},
-// 				None => break,
-// 			}
-// 		}
-// 		self.sink.poll_complete().map_err(|error| RpcError::Other(error.into()))
-// 	}
-// }
-
-// impl<TSink, TStream, TItem, TError> Stream for WebSocket<TSink, TStream>
-// where
-// 	TSink: Sink<TItem, Error = TError>,
-// 	TStream: Stream<Item = OwnedMessage>,
-// 	TError: Into<TransportError>,
-// {
-// 	type Item = TItem;
-
-// 	fn poll_next(&mut self) -> core::task::Poll<Option<Self::Item>> {
-// 		loop {
-// 			match self.stream.poll_next() {
-// 				Ok(Async::Ready(Some(message))) => match message {
-// 					OwnedMessage::Text(data) => return Ok(Async::Ready(Some(data))),
-// 					OwnedMessage::Binary(data) => info!("server sent binary data {:?}", data),
-// 					OwnedMessage::Ping(p) => self.queue.push_front(OwnedMessage::Pong(p)),
-// 					OwnedMessage::Pong(_) => {}
-// 					OwnedMessage::Close(c) => self.queue.push_front(OwnedMessage::Close(c)),
-// 				},
-// 				Ok(Async::Ready(None)) => {
-// 					// TODO try to reconnect (#411).
-// 					return Ok(Async::Ready(None));
-// 				}
-// 				Ok(Async::NotReady) => return Ok(Async::NotReady),
-// 				Err(error) => return Err(RpcError::Other(error.into())),
-// 			}
-// 		}
-// 	}
-// }

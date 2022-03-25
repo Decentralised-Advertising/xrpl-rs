@@ -29,8 +29,11 @@
 //! assert_eq!(account_info.account_data.balance, CurrencyAmount::xrp(9977));
 //! ```
 
+use std::pin::Pin;
 
-use transports::{Transport, TransportError};
+use futures::stream::Stream;
+use serde::de::DeserializeOwned;
+use transports::{DuplexTransport, Transport, TransportError};
 use types::{
     account::{
         AccountChannelsRequest, AccountChannelsResponse, AccountCurrenciesRequest,
@@ -41,6 +44,7 @@ use types::{
     fee::{FeeRequest, FeeResponse},
     ledger::{LedgerRequest, LedgerResponse},
     submit::{SignAndSubmitRequest, SubmitRequest, SubmitResponse},
+    subscribe::SubscribeRequest,
     tx::{TxRequest, TxResponse},
     TransactionEntryRequest, TransactionEntryResponse,
 };
@@ -199,10 +203,17 @@ impl<T: Transport> XRPL<T> {
     );
 }
 
+impl<T: DuplexTransport> XRPL<T> {
+    pub async fn subscribe<R: DeserializeOwned>(
+        &self,
+        request: SubscribeRequest,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<R, TransportError>>>>, TransportError> {
+        self.transport.subscribe(request).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::convert::TryInto;
-
     use crate::types::{BigInt, CurrencyAmount};
 
     use super::{transports::HTTPBuilder, types, XRPL};
