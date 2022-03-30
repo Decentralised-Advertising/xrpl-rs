@@ -1,8 +1,7 @@
 use futures::StreamExt;
-use serde_json::Value;
 use xrpl_rs::{
     transports::WebSocket,
-    types::subscribe::SubscribeRequest,
+    types::subscribe::{SubscribeRequest, SubscriptionEvent},
     XRPL,
 };
 
@@ -19,13 +18,20 @@ async fn main() {
     );
     // Subscribe to ledger events.
     let ledgers = xrpl
-        .subscribe::<Value>(SubscribeRequest::Streams(vec!["ledger".to_owned()]))
+        .subscribe(SubscribeRequest::Streams(vec!["ledger".to_owned()]))
         .await
         .unwrap();
-    // Print each ledger event as it comes through. 
+    // Print each ledger event as it comes through.
     ledgers
-        .for_each(|event| async {
-            println!("{:?}", event.unwrap());
+        .for_each(|event| async move {
+            match event {
+                Ok(SubscriptionEvent::LedgerClosed(ledger_closed)) => {
+                    println!("{}", ledger_closed.ledger_hash);
+                }
+                Err(e) => {
+                    println!("error: {:?}", e);
+                }
+            }
         })
         .await;
 }
