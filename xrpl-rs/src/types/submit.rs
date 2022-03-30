@@ -1,6 +1,8 @@
 use crate::transaction::types::Transaction;
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
+#[skip_serializing_none]
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SubmitRequest {
     /// Hex representation of the signed transaction to submit. This can be a multi-signed transaction.
@@ -9,6 +11,7 @@ pub struct SubmitRequest {
     pub fail_hard: Option<bool>,
 }
 
+#[skip_serializing_none]
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SignAndSubmitRequest {
     /// Transaction definition in JSON format, optionally omitting any auto-fillable fields.
@@ -41,6 +44,7 @@ pub enum KeyType {
     ED25519,
 }
 
+#[skip_serializing_none]
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SubmitResponse {
     pub engine_result: String,

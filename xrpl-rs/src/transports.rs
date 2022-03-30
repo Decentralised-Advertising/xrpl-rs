@@ -1,12 +1,9 @@
 use super::types::{
     subscribe::{SubscribeRequest, SubscriptionEvent},
-    RequestId, WebsocketResponse, JsonRPCResponse, ErrorResponse, JsonRPCResponseResult,
+    ErrorResponse, JsonRPCResponse, JsonRPCResponseResult, RequestId, WebsocketResponse,
 };
 use async_trait::async_trait;
-use futures::{
-    channel::mpsc,
-    SinkExt, Stream, StreamExt,
-};
+use futures::{channel::mpsc, SinkExt, Stream, StreamExt};
 use reqwest::{header::CONTENT_TYPE, Client};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -65,7 +62,6 @@ impl From<WSError> for TransportError {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JsonRPCRequest<T: Serialize + Send> {
-    pub id: RequestId,
     pub method: String,
     pub params: T,
 }
@@ -100,11 +96,11 @@ impl Transport for HTTP {
         params: Params,
     ) -> Result<Res, TransportError> {
         let json_str = serde_json::to_string(&JsonRPCRequest {
-            id: self.counter.fetch_add(1u64, Ordering::SeqCst),
             method: method.to_owned(),
             params: vec![params],
         })
         .map_err(|e| TransportError::JSONError(e))?;
+        println!("{:?}", &json_str);
         let client = self.inner.clone();
         let res = client
             .post(self.base_url.clone())
@@ -209,9 +205,8 @@ impl Transport for WebSocket {
             .clone();
         match response {
             WebsocketResponse::Success(success) => {
-                println!("{:?}", success);
                 Ok(serde_json::from_value(success.result).unwrap())
-            },
+            }
             WebsocketResponse::Error(e) => Err(TransportError::APIError(e)),
         }
     }
@@ -243,7 +238,9 @@ impl DuplexTransport for WebSocket {
             .await
             .map_err(|e| TransportError::ErrorResponse(format!("sending: {:?}", e)))?; //TODO: Add error type for websocket send error
         let stream = r.map(|response| match response {
-            WebsocketResponse::Success(success) => Ok(serde_json::from_value(success.result).unwrap()),
+            WebsocketResponse::Success(success) => {
+                Ok(serde_json::from_value(success.result).unwrap())
+            }
             WebsocketResponse::Error(e) => Err(TransportError::APIError(e)),
         });
         Ok(Box::pin(stream))

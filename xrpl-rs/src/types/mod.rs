@@ -15,6 +15,7 @@ use rust_decimal::Decimal;
 use serde;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_with::skip_serializing_none;
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Default, Clone)]
 pub struct BigInt(pub u64);
@@ -83,6 +84,7 @@ pub type H256 = String;
 /// NOTE Assigning same id to different requests will cause the previous request to be unsubscribed.
 pub type RequestId = u64;
 
+#[skip_serializing_none]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct LedgerInfo {
     /// (Optional) A 20-byte hex string for the ledger version to use. (See Specifying Ledgers)
@@ -123,6 +125,7 @@ impl<'de> Deserialize<'de> for Integer {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct PaginationInfo {
     /// (Optional) Limit the number of transactions to retrieve. Cannot be less than 10 or more than 400. The default is 200.

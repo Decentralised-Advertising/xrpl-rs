@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
 use super::LedgerInfo;
 
+#[skip_serializing_none]
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct LedgerRequest {
     /// (Optional) A 20-byte hex string for the ledger version to use. (See Specifying Ledgers)
@@ -10,6 +12,7 @@ pub struct LedgerRequest {
     pub ledger_index: LedgerRequestIndex,
 }
 
+#[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum LedgerRequestIndex {
@@ -24,12 +27,14 @@ impl Default for LedgerRequestIndex {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct LedgerResponse {
     /// The complete header data of this ledger.
     pub ledger: Ledger,
 }
 
+#[skip_serializing_none]
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Ledger {
     #[serde(flatten)]

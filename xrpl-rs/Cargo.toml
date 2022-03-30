@@ -1,6 +1,6 @@
 [package]
 name = "xrpl-rs"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 description = "An XRPL client implementation"
 license = "MIT"
@@ -33,3 +33,4 @@ ed25519-dalek = "1.0.1"
 ripemd = "0.1.0"
 simple_logger = "2.1.0"
 tokio-tungstenite = { version = "0.17.1", features = [ "native-tls" ] }
+serde_with = "1.12.0"
