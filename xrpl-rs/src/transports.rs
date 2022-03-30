@@ -1,5 +1,6 @@
 use super::types::{
-    subscribe::{SubscribeRequest, SubscriptionEvent}, Error as APIError, RequestId, Response, Result as APIResult,
+    subscribe::{SubscribeRequest, SubscriptionEvent},
+    Error as APIError, RequestId, Response, Result as APIResult,
 };
 use super::Error;
 use async_trait::async_trait;
@@ -24,16 +25,16 @@ use tokio_tungstenite::{
 };
 use url::{ParseError, Url};
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait Transport {
-    async fn send_request<Params: Serialize, Res: DeserializeOwned + Debug>(
+    async fn send_request<Params: Serialize + Send, Res: DeserializeOwned + Debug + Send>(
         &self,
         method: &str,
         params: Params,
     ) -> Result<Res, TransportError>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait DuplexTransport: Transport {
     async fn subscribe<T: DeserializeOwned>(
         &self,
@@ -48,6 +49,7 @@ pub enum TransportError {
     Error(&'static str),
     InvalidEndpoint(ParseError),
     ReqwestError(reqwest::Error),
+    JSONError(serde_json::Error),
     WSError(WSError),
     ErrorResponse(String),
     APIError(Value),
@@ -66,21 +68,21 @@ impl From<WSError> for TransportError {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct JsonRPCRequest<T: Serialize> {
+pub struct JsonRPCRequest<T: Serialize + Send> {
     pub id: RequestId,
     pub method: String,
     pub params: T,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct WebSocketRPCRequest<T: Serialize> {
+pub struct WebSocketRPCRequest<T: Serialize + Send> {
     pub id: RequestId,
     pub command: String,
     #[serde(flatten)]
     pub params: T,
 }
 
-unsafe impl<T: Serialize> Send for JsonRPCRequest<T> {}
+unsafe impl<T: Serialize + Send> Send for JsonRPCRequest<T> {}
 
 pub struct HTTP {
     counter: AtomicU64,
@@ -94,29 +96,28 @@ impl HTTP {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Transport for HTTP {
-    async fn send_request<Params: Serialize, Res: DeserializeOwned + Debug>(
+    async fn send_request<Params: Serialize + Send, Res: DeserializeOwned + Debug + Send>(
         &self,
         method: &str,
         params: Params,
     ) -> Result<Res, TransportError> {
-        match self
-            .inner
+        let json_str = serde_json::to_string(&JsonRPCRequest {
+            id: self.counter.fetch_add(1u64, Ordering::SeqCst),
+            method: method.to_owned(),
+            params: vec![params],
+        })
+        .map_err(|e| TransportError::JSONError(e))?;
+        let client = self.inner.clone();
+        let res = client
             .post(self.base_url.clone())
             .header(CONTENT_TYPE, "application/json")
-            .json(&JsonRPCRequest {
-                id: self.counter.fetch_add(1u64, Ordering::SeqCst),
-                method: method.to_owned(),
-                params: vec![params],
-            })
+            .body(json_str)
             .send()
-            .await?
-            .json::<Response<Res>>()
-            .await
-            .map_err(|e| TransportError::ReqwestError(e))?
-            .result
-        {
+            .await?;
+        let json = res.json::<Response<Res>>().await;
+        match json.map_err(|e| TransportError::ReqwestError(e))?.result {
             APIResult::Ok(result) => Ok(result),
             APIResult::Error(e) => Err(TransportError::APIError(e)),
         }
@@ -177,9 +178,9 @@ impl WebSocket {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Transport for WebSocket {
-    async fn send_request<Params: Serialize, Res: DeserializeOwned + Debug>(
+    async fn send_request<Params: Serialize + Send, Res: DeserializeOwned + Debug + Send>(
         &self,
         method: &str,
         params: Params,
@@ -217,7 +218,7 @@ impl Transport for WebSocket {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl DuplexTransport for WebSocket {
     async fn subscribe<T: DeserializeOwned>(
         &self,
