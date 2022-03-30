@@ -161,7 +161,7 @@ pub enum WebsocketResponse<T> {
 impl<T> WebsocketResponse<T> {
     pub fn get_id(&self) -> Option<u64> {
         match self {
-            Self::Success(res) => res.id.to_owned(),
+            Self::Success(res) => Some(res.id.to_owned()),
             Self::Error(res) => res.id.to_owned(),
         }
     }
@@ -170,7 +170,7 @@ impl<T> WebsocketResponse<T> {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WebsocketSuccessResponse<T> {
     /// (WebSocket only) ID provided in the request that prompted this response
-    pub id: Option<RequestId>,
+    pub id: RequestId,
     /// (WebSocket only) The value response indicates a direct response to an API request. Asynchronous notifications use a different value such as ledgerClosed or transaction.
     pub r#type: Option<String>,
     /// The result of the query; contents vary depending on the command.

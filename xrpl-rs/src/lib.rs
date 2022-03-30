@@ -44,7 +44,7 @@ use types::{
     fee::{FeeRequest, FeeResponse},
     ledger::{LedgerRequest, LedgerResponse},
     submit::{SignAndSubmitRequest, SubmitRequest, SubmitResponse},
-    subscribe::SubscribeRequest,
+    subscribe::{SubscribeRequest, SubscriptionEvent},
     tx::{TxRequest, TxResponse},
     TransactionEntryRequest, TransactionEntryResponse,
 };
@@ -204,10 +204,10 @@ impl<T: Transport> XRPL<T> {
 }
 
 impl<T: DuplexTransport> XRPL<T> {
-    pub async fn subscribe<R: DeserializeOwned>(
+    pub async fn subscribe(
         &self,
         request: SubscribeRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<R, TransportError>>>>, TransportError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<SubscriptionEvent, TransportError>>>>, TransportError> {
         self.transport.subscribe(request).await
     }
 }

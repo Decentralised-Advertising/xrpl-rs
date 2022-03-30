@@ -29,10 +29,13 @@ pub trait Transport {
 
 #[async_trait]
 pub trait DuplexTransport: Transport {
-    async fn subscribe<T: DeserializeOwned>(
+    async fn subscribe(
         &self,
         request: SubscribeRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<T, TransportError>>>>, TransportError>;
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<SubscriptionEvent, TransportError>>>>,
+        TransportError,
+    >;
     async fn unsubscribe(&self, request: SubscribeRequest) -> Result<(), TransportError>;
 }
 
@@ -100,7 +103,6 @@ impl Transport for HTTP {
             params: vec![params],
         })
         .map_err(|e| TransportError::JSONError(e))?;
-        println!("{:?}", &json_str);
         let client = self.inner.clone();
         let res = client
             .post(self.base_url.clone())
@@ -137,32 +139,38 @@ impl HTTPBuilder {
     }
 }
 
+pub enum Outbound {
+    PendingRequest(PendingRequest),
+    Subscription(Subscription),
+}
+
 #[derive(Debug, Clone)]
-pub enum PendingRequest {
-    Call {
-        id: RequestId,
-        request: WebSocketRPCRequest<Value>,
-        response: mpsc::Sender<WebsocketResponse<Value>>,
-    },
-    Subscription {
-        id: RequestId,
-        request: WebSocketRPCRequest<Value>,
-        channel: mpsc::UnboundedSender<WebsocketResponse<Value>>,
-    },
+pub struct PendingRequest {
+    id: RequestId,
+    request: WebSocketRPCRequest<Value>,
+    response: mpsc::Sender<WebsocketResponse<Value>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Subscription {
+    request: WebSocketRPCRequest<Value>,
+    channel: mpsc::UnboundedSender<Result<SubscriptionEvent, TransportError>>,
 }
 
 pub struct WebSocket {
     counter: Arc<AtomicU64>,
-    sender: mpsc::UnboundedSender<PendingRequest>,
+    sender: mpsc::UnboundedSender<Outbound>,
     pending_requests: Arc<Mutex<HashMap<u64, PendingRequest>>>,
+    subscriptions: Arc<Mutex<Vec<Subscription>>>,
 }
 
 impl WebSocket {
-    pub fn new(sender: mpsc::UnboundedSender<PendingRequest>) -> Self {
+    pub fn new(sender: mpsc::UnboundedSender<Outbound>) -> Self {
         Self {
             counter: Arc::new(AtomicU64::new(1u64)),
             sender,
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
+            subscriptions: Arc::new(Mutex::new(Vec::new())),
         }
     }
     pub fn builder() -> WebSocketBuilder {
@@ -180,7 +188,7 @@ impl Transport for WebSocket {
         let mut sender = self.sender.clone();
         let id = self.counter.fetch_add(1u64, Ordering::Relaxed);
         let (s, r) = mpsc::channel(1);
-        let request = PendingRequest::Call {
+        let request = PendingRequest {
             id,
             request: WebSocketRPCRequest {
                 id,
@@ -193,7 +201,7 @@ impl Transport for WebSocket {
             pending_requests.insert(id, request.clone());
         }
         sender
-            .send(request)
+            .send(Outbound::PendingRequest(request))
             .await
             .map_err(|e| TransportError::ErrorResponse(format!("sending: {:?}", e)))?; //TODO: Add error type for websocket send error
         let response: WebsocketResponse<Value> = r
@@ -214,15 +222,17 @@ impl Transport for WebSocket {
 
 #[async_trait]
 impl DuplexTransport for WebSocket {
-    async fn subscribe<T: DeserializeOwned>(
+    async fn subscribe(
         &self,
         request: SubscribeRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<T, TransportError>>>>, TransportError> {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<SubscriptionEvent, TransportError>>>>,
+        TransportError,
+    > {
         let mut sender = self.sender.clone();
         let id = self.counter.fetch_add(1u64, Ordering::Relaxed);
         let (s, r) = mpsc::unbounded();
-        let req = PendingRequest::Subscription {
-            id,
+        let req = Subscription {
             request: WebSocketRPCRequest {
                 id,
                 command: "subscribe".to_owned(),
@@ -230,20 +240,14 @@ impl DuplexTransport for WebSocket {
             },
             channel: s.clone(),
         };
-        if let Ok(mut pending_requests) = self.pending_requests.lock() {
-            pending_requests.insert(id, req.clone());
+        if let Ok(mut subs) = self.subscriptions.lock() {
+            subs.push(req.clone());
         }
         sender
-            .send(req)
+            .send(Outbound::Subscription(req))
             .await
             .map_err(|e| TransportError::ErrorResponse(format!("sending: {:?}", e)))?; //TODO: Add error type for websocket send error
-        let stream = r.map(|response| match response {
-            WebsocketResponse::Success(success) => {
-                Ok(serde_json::from_value(success.result).unwrap())
-            }
-            WebsocketResponse::Error(e) => Err(TransportError::APIError(e)),
-        });
-        Ok(Box::pin(stream))
+        Ok(Box::pin(r))
     }
     async fn unsubscribe(&self, _request: SubscribeRequest) -> Result<(), TransportError> {
         Err(TransportError::Error("test"))
@@ -264,32 +268,36 @@ impl WebSocketBuilder {
 
     pub async fn build(&self) -> Result<WebSocket, TransportError> {
         let (ws_stream, _) = connect_async(self.endpoint.clone().unwrap()).await?;
-        let (sender, mut receiver) = mpsc::unbounded::<PendingRequest>();
+        let (sender, receiver) = mpsc::unbounded::<Outbound>();
         let (write, read) = ws_stream.split();
         let ws = WebSocket::new(sender);
         let pending_requests = ws.pending_requests.clone();
+        let subscriptions = ws.subscriptions.clone();
         tokio::spawn(async move {
             read.for_each(|message| async {
                 let data = message.unwrap().into_data();
+                if data.len() == 0 {
+                    return;
+                }
                 let res: Option<WebsocketResponse<Value>> = serde_json::from_slice(&data).ok();
                 match res {
                     Some(res) => {
                         let pr = pending_requests
                             .lock()
-                            .map(|p| p.get(&res.get_id().unwrap()).unwrap().clone())
-                            .unwrap();
-                        match pr {
-                            PendingRequest::Call { response, .. } => {
-                                let mut r = response.clone();
-                                r.send(res).await.unwrap();
-                            }
-                            _ => {}
+                            .map(|p| p.get(&res.get_id().unwrap()).and_then(|p|Some(p.clone()))).unwrap();
+                        if let Some(pending_request) = pr {
+                            let mut r = pending_request.response.clone();
+                            r.send(res).await.unwrap();
                         }
                     }
                     None => {
-                        if let Ok(event) = serde_json::from_slice::<SubscriptionEvent>(&data) {
-                            println!("{:?}", event);
-                        };
+                        let subs = subscriptions.lock().unwrap().clone();
+                        for sub in &subs {
+                            let event = serde_json::from_slice::<SubscriptionEvent>(&data)
+                                .map_err(|e| TransportError::JSONError(e));
+                            let mut ch = sub.channel.clone();
+                            ch.send(event).await.unwrap();
+                        }
                     }
                 }
             })
@@ -298,11 +306,11 @@ impl WebSocketBuilder {
         tokio::spawn(async move {
             receiver
                 .map(|req| match req {
-                    PendingRequest::Call { request, .. } => {
-                        Message::Text(serde_json::to_string(&request).unwrap())
+                    Outbound::PendingRequest(req) => {
+                        Message::Text(serde_json::to_string(&req.request).unwrap())
                     }
-                    PendingRequest::Subscription { request, .. } => {
-                        Message::Text(serde_json::to_string(&request).unwrap())
+                    Outbound::Subscription(req) => {
+                        Message::Text(serde_json::to_string(&req.request).unwrap())
                     }
                 })
                 .map(Ok)
