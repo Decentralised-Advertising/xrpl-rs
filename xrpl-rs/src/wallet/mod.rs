@@ -165,7 +165,7 @@ impl Wallet {
             .ledger
             .ledger_info
             .ledger_index
-            .ok_or(Error::LastLedgerSequenceRequired)?
+            .ok_or(Error::LastLedgerSequenceRequired)?.0
             + self.ledger_offset;
         Ok(())
     }

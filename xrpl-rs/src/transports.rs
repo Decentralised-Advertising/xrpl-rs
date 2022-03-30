@@ -1,20 +1,16 @@
 use super::types::{
     subscribe::{SubscribeRequest, SubscriptionEvent},
-    Error as APIError, RequestId, Response, Result as APIResult,
+    RequestId, WebsocketResponse, JsonRPCResponse, ErrorResponse, JsonRPCResponseResult,
 };
-use super::Error;
 use async_trait::async_trait;
 use futures::{
-    channel::{mpsc, mpsc::UnboundedReceiver, oneshot},
-    stream::Map,
-    task::Context,
+    channel::mpsc,
     SinkExt, Stream, StreamExt,
 };
 use reqwest::{header::CONTENT_TYPE, Client};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -52,7 +48,7 @@ pub enum TransportError {
     JSONError(serde_json::Error),
     WSError(WSError),
     ErrorResponse(String),
-    APIError(Value),
+    APIError(ErrorResponse),
 }
 
 impl From<reqwest::Error> for TransportError {
@@ -116,10 +112,10 @@ impl Transport for HTTP {
             .body(json_str)
             .send()
             .await?;
-        let json = res.json::<Response<Res>>().await;
+        let json = res.json::<JsonRPCResponse<Res>>().await;
         match json.map_err(|e| TransportError::ReqwestError(e))?.result {
-            APIResult::Ok(result) => Ok(result),
-            APIResult::Error(e) => Err(TransportError::APIError(e)),
+            JsonRPCResponseResult::Success(success) => Ok(success.result),
+            JsonRPCResponseResult::Error(e) => Err(TransportError::APIError(e)),
         }
     }
 }
@@ -150,12 +146,12 @@ pub enum PendingRequest {
     Call {
         id: RequestId,
         request: WebSocketRPCRequest<Value>,
-        response: mpsc::Sender<Response<Value>>,
+        response: mpsc::Sender<WebsocketResponse<Value>>,
     },
     Subscription {
         id: RequestId,
         request: WebSocketRPCRequest<Value>,
-        channel: mpsc::UnboundedSender<Response<Value>>,
+        channel: mpsc::UnboundedSender<WebsocketResponse<Value>>,
     },
 }
 
@@ -204,16 +200,19 @@ impl Transport for WebSocket {
             .send(request)
             .await
             .map_err(|e| TransportError::ErrorResponse(format!("sending: {:?}", e)))?; //TODO: Add error type for websocket send error
-        let response: Response<Value> = r
+        let response: WebsocketResponse<Value> = r
             .take(1)
-            .collect::<Vec<Response<Value>>>()
+            .collect::<Vec<WebsocketResponse<Value>>>()
             .await
             .first()
             .unwrap()
             .clone();
-        match response.result {
-            APIResult::Ok(result) => Ok(serde_json::from_value(result).unwrap()),
-            APIResult::Error(e) => Err(TransportError::APIError(e)),
+        match response {
+            WebsocketResponse::Success(success) => {
+                println!("{:?}", success);
+                Ok(serde_json::from_value(success.result).unwrap())
+            },
+            WebsocketResponse::Error(e) => Err(TransportError::APIError(e)),
         }
     }
 }
@@ -243,9 +242,9 @@ impl DuplexTransport for WebSocket {
             .send(req)
             .await
             .map_err(|e| TransportError::ErrorResponse(format!("sending: {:?}", e)))?; //TODO: Add error type for websocket send error
-        let stream = r.map(|response| match response.result {
-            APIResult::Ok(result) => Ok(serde_json::from_value(result).unwrap()),
-            APIResult::Error(e) => Err(TransportError::APIError(e)),
+        let stream = r.map(|response| match response {
+            WebsocketResponse::Success(success) => Ok(serde_json::from_value(success.result).unwrap()),
+            WebsocketResponse::Error(e) => Err(TransportError::APIError(e)),
         });
         Ok(Box::pin(stream))
     }
@@ -275,13 +274,12 @@ impl WebSocketBuilder {
         tokio::spawn(async move {
             read.for_each(|message| async {
                 let data = message.unwrap().into_data();
-                let s = String::from_utf8_lossy(&data);
-                let res: Option<Response<Value>> = serde_json::from_slice(&data).ok();
+                let res: Option<WebsocketResponse<Value>> = serde_json::from_slice(&data).ok();
                 match res {
                     Some(res) => {
                         let pr = pending_requests
                             .lock()
-                            .map(|p| p.get(&res.id.unwrap()).unwrap().clone())
+                            .map(|p| p.get(&res.get_id().unwrap()).unwrap().clone())
                             .unwrap();
                         match pr {
                             PendingRequest::Call { response, .. } => {

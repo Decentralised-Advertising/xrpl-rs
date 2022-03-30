@@ -88,21 +88,39 @@ pub struct LedgerInfo {
     /// (Optional) A 20-byte hex string for the ledger version to use. (See Specifying Ledgers)
     pub ledger_hash: Option<String>,
     /// (Optional) The ledger index of the ledger to use, or a shortcut string to choose a ledger automatically. (See Specifying Ledgers)
-    pub ledger_index: Option<u32>,
+    pub ledger_index: Option<Integer>,
     /// (Omitted if ledger_index is provided instead) The ledger index of the current in-progress ledger, which was used when retrieving this information.
     pub ledger_current_index: Option<i64>,
     /// (May be omitted) If true, the information in this response comes from a validated ledger version. Otherwise, the information is subject to change. New in: rippled 0.90.0
     pub validated: Option<bool>,
 }
 
-fn from_str<'de, T, D>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
-where
-    T: FromStr,
-    T::Err: std::fmt::Display,
-    D: serde::de::Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    Ok(Some(T::from_str(&s).map_err(serde::de::Error::custom)?))
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Integer(pub u32);
+
+impl Serialize for Integer {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!("{}", self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for Integer {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let v = Value::deserialize(deserializer)?;
+        let n = v
+            .as_u64()
+            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+            .ok_or_else(|| serde::de::Error::custom("non-integer"))?
+            .try_into()
+            .map_err(|_| serde::de::Error::custom("overflow"))?;
+        Ok(Integer(n))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -114,15 +132,46 @@ pub struct PaginationInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Response<T> {
+pub struct JsonRPCResponse<T> {
+    pub result: JsonRPCResponseResult<T>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "status")]
+pub enum JsonRPCResponseResult<T> {
+    #[serde(rename = "success")]
+    Success(JsonRPCSuccessResponse<T>),
+    #[serde(rename = "error")]
+    Error(ErrorResponse),
+}
+
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "status")]
+pub enum WebsocketResponse<T> {
+    #[serde(rename = "success")]
+    Success(WebsocketSuccessResponse<T>),
+    #[serde(rename = "error")]
+    Error(ErrorResponse),
+}
+
+impl<T> WebsocketResponse<T> {
+    pub fn get_id(&self) -> Option<u64> {
+        match self {
+            Self::Success(res) => res.id.to_owned(),
+            Self::Error(res) => res.id.to_owned(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WebsocketSuccessResponse<T> {
     /// (WebSocket only) ID provided in the request that prompted this response
     pub id: Option<RequestId>,
-    /// (WebSocket only) The value success indicates the request was successfully received and understood by the server. Some client libraries omit this field on success.
-    pub status: Option<String>,
     /// (WebSocket only) The value response indicates a direct response to an API request. Asynchronous notifications use a different value such as ledgerClosed or transaction.
     pub r#type: Option<String>,
     /// The result of the query; contents vary depending on the command.
-    pub result: Result<T>,
+    pub result: T,
     /// (May be omitted) If this field is provided, the value is the string load. This means the client is approaching the rate limiting threshold where the server will disconnect this client.
     pub warning: Option<String>,
     /// (May be omitted) If this field is provided, it contains one or more Warnings Objects with important warnings. For details, see API Warnings. New in: rippled 1.5.0
@@ -133,15 +182,25 @@ pub struct Response<T> {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum Result<T> {
-    Ok(T),
-    Error(Value),
+pub struct ErrorResponse {
+    pub id: Option<RequestId>,
+    pub r#type: Option<String>,
+    pub error: Option<String>,
 }
 
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Error {
-    pub error: Option<String>,
+pub struct JsonRPCSuccessResponse<T> {
+    /// The result of the query; contents vary depending on the command.
+    #[serde(flatten)]
+    pub result: T,
+    /// (May be omitted) If this field is provided, the value is the string load. This means the client is approaching the rate limiting threshold where the server will disconnect this client.
+    pub warning: Option<String>,
+    /// (May be omitted) If this field is provided, it contains one or more Warnings Objects with important warnings. For details, see API Warnings. New in: rippled 1.5.0
+    /// TODO: Add Warnings Object.
+    pub warnings: Option<Vec<Value>>,
+    /// (May be omitted) If true, this request and response have been forwarded from a Reporting Mode server to a P2P Mode server (and back) because the request requires data that is not available in Reporting Mode. The default is false.
+    pub forwarded: Option<bool>,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
