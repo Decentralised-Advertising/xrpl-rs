@@ -49,13 +49,13 @@ pub struct AccountChannel {
     /// (May be omitted) The public key for the payment channel in hexadecimal format, if one was specified at channel creation. Signed claims against this channel must be redeemed with the matching key pair.
     pub public_key_hex: Option<String>,
     /// (May be omitted) Time, in seconds since the Ripple Epoch, when this channel is set to expire. This expiration date is mutable. If this is before the close time of the most recent validated ledger, the channel is expired.
-    pub expiration: usize,
+    pub expiration: Option<usize>,
     /// (May be omitted) Time, in seconds since the Ripple Epoch, of this channel's immutable expiration, if one was specified at channel creation. If this is before the close time of the most recent validated ledger, the channel is expired.
-    pub cancel_after: usize,
+    pub cancel_after: Option<usize>,
     /// (May be omitted) A 32-bit unsigned integer to use as a source tag for payments through this payment channel, if one was specified at channel creation. This indicates the payment channel's originator or other purpose at the source account. Conventionally, if you bounce payments from this channel, you should specify this value in the DestinationTag of the return payment.
-    pub source_tag: usize,
+    pub source_tag: Option<usize>,
     /// (May be omitted) A 32-bit unsigned integer to use as a destination tag for payments through this channel, if one was specified at channel creation. This indicates the payment channel's beneficiary or other purpose at the destination account.
-    pub destination_tag: usize,
+    pub destination_tag: Option<usize>,
 }
 
 /// Used to make account_currencies requests.
