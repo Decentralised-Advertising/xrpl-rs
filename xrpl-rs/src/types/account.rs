@@ -4,7 +4,7 @@ use serde_with::skip_serializing_none;
 
 /// Used to make account_channels requests.
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountChannelsRequest {
     /// A unique identifier for the account, most commonly the account's Address.
     pub account: Address,
@@ -17,7 +17,7 @@ pub struct AccountChannelsRequest {
 }
 
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountChannelsResponse {
     /// The address of the source/owner of the payment channels. This corresponds to the account field of the request.
     pub account: Address,
@@ -30,7 +30,7 @@ pub struct AccountChannelsResponse {
 }
 
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountChannel {
     /// The owner of the channel, as an Address.
     pub account: Address,
@@ -60,7 +60,7 @@ pub struct AccountChannel {
 
 /// Used to make account_currencies requests.
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountCurrenciesRequest {
     /// A unique identifier for the account, most commonly the account's Address.
     pub account: Address,
@@ -74,7 +74,7 @@ pub struct AccountCurrenciesRequest {
 
 /// The response type for an account_currencies request.
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountCurrenciesResponse {
     #[serde(flatten)]
     pub ledger_info: LedgerInfo,
@@ -86,7 +86,7 @@ pub struct AccountCurrenciesResponse {
 
 /// Used to make account_info requests.
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountInfoRequest {
     /// A unique identifier for the account, most commonly the account's Address.
     pub account: Address,
@@ -101,7 +101,7 @@ pub struct AccountInfoRequest {
 }
 
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountInfoResponse {
     /// The AccountRoot ledger object with this account's information, as stored in the ledger.
     pub account_data: AccountRoot,
@@ -114,7 +114,7 @@ pub struct AccountInfoResponse {
 }
 
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountQueueData {
     /// Number of queued transactions from this address.
     pub txn_count: Option<i64>,
@@ -131,7 +131,7 @@ pub struct AccountQueueData {
 }
 
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountQueuedTransaction {
     /// Whether this transaction changes this address's ways of authorizing transactions.
     pub auth_change_queued: Option<bool>,
@@ -147,7 +147,7 @@ pub struct AccountQueuedTransaction {
 
 /// Used to make account_line requests.
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountLinesRequest {
     /// A unique identifier for the account, most commonly the account's Address.
     pub account: Address,
@@ -160,7 +160,7 @@ pub struct AccountLinesRequest {
 }
 
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountLinesResponse {
     /// A unique identifier for the account, most commonly the account's Address.
     pub account: Address,
@@ -173,7 +173,7 @@ pub struct AccountLinesResponse {
 }
 
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountTrustLine {
     /// The unique Address of the counterparty to this trust line.
     pub account: Address,
@@ -204,7 +204,7 @@ pub struct AccountTrustLine {
 }
 
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountOfferRequest {
     pub account: Address,
     #[serde(flatten)]
@@ -214,14 +214,14 @@ pub struct AccountOfferRequest {
 }
 
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountOfferResponse {
     pub account: Address,
     pub offers: Vec<AccountOffer>,
 }
 
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountOffer {
     pub flags: u64,
     pub seq: u64,
@@ -233,7 +233,7 @@ pub struct AccountOffer {
 
 /// Used to make account_objects requests.
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountObjectsRequest {
     /// A unique identifier for the account, most commonly the account's address.
     pub account: Address,
@@ -247,7 +247,7 @@ pub struct AccountObjectsRequest {
     pub pagination: PaginationInfo,
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum AccountObjectType {
     Unknown,
@@ -268,7 +268,7 @@ impl Default for AccountObjectType {
 }
 
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountObjectsResponse {
     /// Unique Address of the account this request corresponds to.
     pub account: Address,
@@ -279,9 +279,9 @@ pub struct AccountObjectsResponse {
 
 /// Used to make account_tx requests.
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountTXRequest {}
 
 #[skip_serializing_none]
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AccountTXResponse {}

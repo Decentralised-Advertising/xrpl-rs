@@ -206,7 +206,7 @@ pub struct JsonRPCSuccessResponse<T> {
     pub forwarded: Option<bool>,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct SignerList {
     #[serde(rename = "SignerEntries")]
     pub signer_entries: Vec<SignerEntry>,
@@ -214,7 +214,7 @@ pub struct SignerList {
     pub signer_quorum: u32,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct SignerEntry {
     #[serde(rename = "Account")]
     pub account: String,
@@ -222,7 +222,7 @@ pub struct SignerEntry {
     pub signer_weight: u16,
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[serde(untagged)]
 pub enum CurrencyAmount {
     XRP(BigInt),
@@ -248,28 +248,28 @@ impl Default for CurrencyAmount {
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct IssuedCurrencyAmount {
     pub value: Decimal,
     pub currency: String,
     pub issuer: Address,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct TransactionEntryRequest {
     pub tx_hash: Option<String>,
     pub ledger_index: Option<u64>,
     pub ledger_hash: Option<String>,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct TransactionEntryResponse {
     pub tx_json: Option<Value>,
     pub ledger_index: Option<u64>,
     pub ledger_hash: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[serde(tag = "LedgerEntryType")]
 pub enum LedgerEntry {
     Unknown,
@@ -283,7 +283,7 @@ impl Default for LedgerEntry {
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct AccountRoot {
     /// The identifying (classic) address of this account.
@@ -319,7 +319,7 @@ pub struct AccountRoot {
     pub transfer_rate: Option<u32>,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct Check {
     /// The sender of the Check. Cashing the Check debits this address's balance.
