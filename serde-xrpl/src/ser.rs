@@ -207,7 +207,13 @@ impl<'a> ser::Serializer for &'a mut Serializer {
                 4 => {
                     *value = Value::UInt64(v);
                 }
-                _ => unimplemented!(),
+                6 => {
+                    *value = Value::UInt64(v);
+                }
+                _ => {
+                    println!("could not serialize: {:?} {:?}", field, value);
+                    unimplemented!()
+                },
             };
             self.fields.push((field.clone(), value.clone()));
             self.field = None;
