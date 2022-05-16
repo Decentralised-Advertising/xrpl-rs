@@ -25,6 +25,8 @@ lazy_static! {
     static ref DEFAULT_LEDGER_OFFSET: u32 = 20; // Approx 1 minute.
 }
 
+static FAMILY_SEED: u8 = 0x21;
+
 #[derive(Debug)]
 pub enum Error {
     InvalidSecret(bs58::decode::Error),
@@ -57,20 +59,13 @@ pub struct Wallet {
     fee: Option<BigInt>,
     max_fee: BigInt,
     ledger_offset: u32,
+    secret: String,
 }
 
 impl Wallet {
-    pub fn new_random() -> Self {
-        let secp = Secp256k1::new();
-        let mut rng = OsRng::new().expect("OsRng");
-        let keypair = Secp256k1KeyPair::new(&secp, &mut rng);
-        Self {
-            keypair: KeyPair::Secp256k1(keypair),
-            sequence: Some(0),
-            fee: None,
-            max_fee: DEFAULT_MAX_FEE.to_owned(),
-            ledger_offset: DEFAULT_LEDGER_OFFSET.to_owned(),
-        }
+    pub fn new_random() -> Result<Self, Error> {
+        let secret = generate_random_secret()?;
+        Self::from_secret(&secret)
     }
     pub fn address(&self) -> String {
         let sha = sha256(match &self.keypair {
@@ -93,6 +88,7 @@ impl Wallet {
             fee: None,
             max_fee: DEFAULT_MAX_FEE.to_owned(),
             ledger_offset: DEFAULT_LEDGER_OFFSET.to_owned(),
+            secret: secret.to_owned(),
         })
     }
     pub fn set_sequence(&mut self, sequence: u32) {
@@ -165,7 +161,8 @@ impl Wallet {
             .ledger
             .ledger_info
             .ledger_index
-            .ok_or(Error::LastLedgerSequenceRequired)?.0
+            .ok_or(Error::LastLedgerSequenceRequired)?
+            .0
             + self.ledger_offset;
         Ok(())
     }
@@ -251,6 +248,14 @@ fn decode_secret(secret: &str) -> Result<Vec<u8>, Error> {
         .into_vec()
         .map_err(|e| Error::InvalidSecret(e))?[1..]
         .to_vec())
+}
+
+fn generate_random_secret() -> Result<String, Error> {
+    let r: [u8; 16] = rand::random();
+    Ok(bs58::encode([vec![FAMILY_SEED], r.to_vec()].concat())
+        .with_alphabet(bs58::alphabet::Alphabet::RIPPLE)
+        .with_check()
+        .into_string())
 }
 
 fn keypair_from_secret(secret: &str) -> Result<KeyPair, Error> {

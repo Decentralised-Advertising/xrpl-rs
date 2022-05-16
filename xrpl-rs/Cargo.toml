@@ -34,3 +34,4 @@ ripemd = "0.1.0"
 simple_logger = "2.1.0"
 tokio-tungstenite = { version = "0.17.1", features = [ "native-tls" ] }
 serde_with = "1.12.0"
+rand = "0.8.5"
